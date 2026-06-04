@@ -67,11 +67,9 @@ def get_keyboard(question_index: int) -> InlineKeyboardMarkup:
     question = QUESTIONS[question_index]
     q_id = question["id"]
     buttons = []
-
     for opt in question["options"]:
         buttons.append([InlineKeyboardButton(
             opt["label"],
-            callback_data=f"q{q_id}_{opt['value']}"
+            callback_data=f"ans_{q_id}_{opt['value']}"
         )])
-
     return InlineKeyboardMarkup(buttons)
