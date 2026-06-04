@@ -185,7 +185,7 @@ def main():
     app.add_handler(CommandHandler("week", week_command))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
-    scheduler = AsyncIOScheduler()
+    scheduler = AsyncIOScheduler(timezone="Europe/Paris")
     survey_times = [
         "09:00", "10:15", "11:30", "12:45", "14:00",
         "15:15", "16:30", "17:45", "19:00", "20:00",
