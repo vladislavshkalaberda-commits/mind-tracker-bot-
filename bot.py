@@ -194,9 +194,11 @@ def main():
     for time_str in survey_times:
         hour, minute = map(int, time_str.split(":"))
         scheduler.add_job(
-            lambda h=hour, m=minute: asyncio.create_task(
-                send_scheduled_survey(app.bot, get_chat_id() or "")
-            ),
+            lambda h=hour, m=minute: asyncio.run_coroutine_threadsafe(
+    send_scheduled_survey(app.bot, get_chat_id() or ""),
+    asyncio.get_event_loop()
+),
+
             trigger="cron", hour=hour, minute=minute
         )
 
