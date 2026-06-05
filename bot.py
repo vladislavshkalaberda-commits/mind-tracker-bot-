@@ -22,8 +22,6 @@ TZ = pytz.timezone("Europe/Paris")
 
 db = Database()
 current_session = {}
-
-# Global reference to bot - set after initialization
 bot_instance = None
 
 
@@ -44,7 +42,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f.write(chat_id)
     await update.message.reply_text(
         "🧠 *Mind Tracker запущен!*\n\n"
-        "Я буду отправлять тебе опросы 12 раз в день с 9:00 до 22:00.\n\n"
+        "Я буду отправлять тебе опросы 25 раз в день с 9:00 до 22:00.\n\n"
         "Команды:\n"
         "/survey — пройти опрос прямо сейчас\n"
         "/stats — статистика за сегодня\n"
@@ -151,7 +149,6 @@ async def week_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def scheduled_job():
-    """This runs inside the correct event loop"""
     global bot_instance
     if bot_instance is None:
         logger.error("Bot not initialized yet")
@@ -186,21 +183,17 @@ async def main():
     app.add_handler(CommandHandler("week", week_command))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
-    # Initialize app first, then set bot_instance
     await app.initialize()
     bot_instance = app.bot
-    logger.info(f"Bot initialized: {bot_instance}")
+    logger.info("✅ Bot initialized")
 
-    # Start scheduler AFTER bot is initialized
     scheduler = AsyncIOScheduler(timezone=TZ)
     survey_times = [
-    (9, 0), (9, 32), (10, 5), (10, 37), (11, 10),
-    (11, 42), (12, 15), (12, 47), (13, 20), (13, 52),
-    (14, 25), (14, 57), (15, 30), (16, 2), (16, 35),
-    (17, 7), (17, 40), (18, 12), (18, 45), (19, 17),
-    (19, 50), (20, 22), (20, 55), (21, 27), (22, 0)
-]
-
+        (9, 0), (9, 32), (10, 5), (10, 37), (11, 10),
+        (11, 42), (12, 15), (12, 47), (13, 20), (13, 52),
+        (14, 25), (14, 57), (15, 30), (16, 2), (16, 35),
+        (17, 7), (17, 40), (18, 12), (18, 45), (19, 17),
+        (19, 50), (20, 22), (20, 55), (21, 27), (22, 0)
     ]
     for hour, minute in survey_times:
         scheduler.add_job(
@@ -210,15 +203,12 @@ async def main():
             minute=minute
         )
     scheduler.start()
-    logger.info("✅ Scheduler started with jobs:")
-    for job in scheduler.get_jobs():
-        logger.info(f"  - {job}")
+    logger.info("✅ Scheduler started with 25 jobs")
 
     await app.start()
     await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
     logger.info("✅ Bot is polling!")
 
-    # Keep running
     await asyncio.Event().wait()
 
 
