@@ -4,7 +4,6 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler, ContextTypes
 )
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from database import Database
 from questions import QUESTIONS, get_keyboard
 from stats import generate_daily_stats, generate_weekly_stats
@@ -42,7 +41,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🧠 *Mind Tracker запущен!*\n\n"
         "Я буду отправлять тебе опросы 12 раз в день с 9:00 до 22:00.\n\n"
-        "Каждый опрос занимает ~30 секунд.\n\n"
         "Команды:\n"
         "/survey — пройти опрос прямо сейчас\n"
         "/stats — статистика за сегодня\n"
@@ -55,7 +53,6 @@ async def send_question(chat_id, bot, question_index, edit_message=None):
     question = QUESTIONS[question_index]
     keyboard = get_keyboard(question_index)
     text = f"*Вопрос {question_index + 1} из {len(QUESTIONS)}*\n\n{question['text']}"
-
     if edit_message:
         try:
             await edit_message.edit_text(text, reply_markup=keyboard, parse_mode="Markdown")
@@ -78,11 +75,9 @@ async def survey_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     chat_id = str(query.from_user.id)
     data = query.data
 
-    # Start survey button
     if data == "start_survey":
         current_session[chat_id] = {
             "answers": {},
@@ -92,12 +87,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_question(chat_id, context.bot, 0, edit_message=query.message)
         return
 
-    # Answer button: format is "ans_QINDEX_VALUE"
     if data.startswith("ans_"):
         parts = data.split("_", 2)
         if len(parts) != 3:
             return
-
         q_index = int(parts[1])
         value = parts[2]
 
@@ -106,27 +99,21 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         session = current_session[chat_id]
-
-        # Ignore if answer is for old question
         if session["question_index"] != q_index:
             return
 
-        # Save answer
         question = QUESTIONS[q_index]
         selected_label = next((opt["label"] for opt in question["options"] if opt["value"] == value), value)
         session["answers"][f"q{q_index + 1}"] = value
         session["question_index"] += 1
 
-        # Show selected
         await query.edit_message_text(
             f"✅ *{question['text']}*\n→ {selected_label}",
             parse_mode="Markdown"
         )
 
         next_index = session["question_index"]
-
         if next_index >= len(QUESTIONS):
-            # Done
             db.save_response(chat_id, session["answers"], session["timestamp"])
             del current_session[chat_id]
             await query.message.reply_text(
@@ -159,21 +146,20 @@ async def week_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Пока недостаточно данных. Нужна хотя бы пара дней!")
 
 
-async def send_scheduled_survey(bot, chat_id: str):
+async def send_scheduled_survey(context: ContextTypes.DEFAULT_TYPE):
+    chat_id = get_chat_id()
     if not chat_id:
+        logger.warning("No chat_id found, skipping survey")
         return
     keyboard = InlineKeyboardMarkup([[
         InlineKeyboardButton("📋 Пройти опрос", callback_data="start_survey")
     ]])
-    try:
-        await bot.send_message(
-            chat_id=chat_id,
-            text="🔔 *Время опроса!*\n\nКак твои мысли последние 15 минут?",
-            reply_markup=keyboard,
-            parse_mode="Markdown"
-        )
-    except Exception as e:
-        logger.error(f"Failed to send survey: {e}")
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="🔔 *Время опроса!*\n\nКак твои мысли последние 15 минут?",
+        reply_markup=keyboard,
+        parse_mode="Markdown"
+    )
 
 
 def main():
@@ -185,28 +171,26 @@ def main():
     app.add_handler(CommandHandler("week", week_command))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
-    scheduler = AsyncIOScheduler(timezone="Europe/Paris")
+    # Use PTB's built-in job queue instead of APScheduler
+    job_queue = app.job_queue
     survey_times = [
-        "09:00", "10:15", "11:30", "12:45", "14:00",
-        "15:15", "16:30", "17:45", "19:00", "20:00",
-        "21:00", "22:00"
+        (9, 0), (10, 15), (11, 30), (12, 45), (14, 0),
+        (15, 15), (16, 30), (17, 45), (19, 0), (20, 0),
+        (21, 0), (22, 0)
     ]
-    for time_str in survey_times:
-        hour, minute = map(int, time_str.split(":"))
-        scheduler.add_job(
-            lambda h=hour, m=minute: asyncio.run_coroutine_threadsafe(
-    send_scheduled_survey(app.bot, get_chat_id() or ""),
-    asyncio.get_event_loop()
-),
 
-            trigger="cron", hour=hour, minute=minute
+    import pytz
+    tz = pytz.timezone("Europe/Paris")
+
+    for hour, minute in survey_times:
+        job_queue.run_daily(
+            send_scheduled_survey,
+            time=datetime.now(tz).replace(hour=hour, minute=minute, second=0, microsecond=0).timetz(),
         )
 
-    scheduler.start()
     logger.info("Mind Tracker Bot started!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == "__main__":
     main()
-
