@@ -1,13 +1,15 @@
 import logging
 import asyncio
+import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.date import DateTrigger
 from database import Database
 from questions import QUESTIONS, get_keyboard
 from stats import generate_daily_stats, generate_weekly_stats
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 
 logging.basicConfig(
@@ -23,6 +25,7 @@ TZ = pytz.timezone("Europe/Paris")
 db = Database()
 current_session = {}
 bot_instance = None
+scheduler = None
 
 
 def get_chat_id():
@@ -35,6 +38,33 @@ def get_chat_id():
         return None
 
 
+def schedule_random_surveys():
+    """Schedule 30 random surveys for today between 9:00 and 22:00"""
+    global scheduler
+    now = datetime.now(TZ)
+    today = now.date()
+
+    start = TZ.localize(datetime(today.year, today.month, today.day, 9, 0))
+    end = TZ.localize(datetime(today.year, today.month, today.day, 22, 0))
+    total_seconds = int((end - start).total_seconds())
+
+    # Generate 30 unique random moments
+    offsets = sorted(random.sample(range(total_seconds), 30))
+
+    count = 0
+    for offset in offsets:
+        send_time = start + timedelta(seconds=offset)
+        if send_time > now:
+            scheduler.add_job(
+                scheduled_job,
+                trigger=DateTrigger(run_date=send_time),
+                id=f"survey_{offset}"
+            )
+            count += 1
+
+    logger.info(f"✅ Scheduled {count} random surveys for today")
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
     db.register_user(chat_id)
@@ -42,7 +72,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f.write(chat_id)
     await update.message.reply_text(
         "🧠 *Mind Tracker запущен!*\n\n"
-        "Я буду отправлять тебе опросы 25 раз в день с 9:00 до 22:00.\n\n"
+        "Я буду отправлять тебе опросы 30 раз в день в случайные моменты с 9:00 до 22:00.\n\n"
         "Команды:\n"
         "/survey — пройти опрос прямо сейчас\n"
         "/stats — статистика за сегодня\n"
@@ -173,7 +203,7 @@ async def scheduled_job():
 
 
 async def main():
-    global bot_instance
+    global bot_instance, scheduler
 
     app = Application.builder().token(TOKEN).build()
 
@@ -188,22 +218,20 @@ async def main():
     logger.info("✅ Bot initialized")
 
     scheduler = AsyncIOScheduler(timezone=TZ)
-    survey_times = [
-        (9, 0), (9, 32), (10, 5), (10, 37), (11, 10),
-        (11, 42), (12, 15), (12, 47), (13, 20), (13, 52),
-        (14, 25), (14, 57), (15, 30), (16, 2), (16, 35),
-        (17, 7), (17, 40), (18, 12), (18, 45), (19, 17),
-        (19, 50), (20, 22), (20, 55), (21, 10), (22, 0)
-    ]
-    for hour, minute in survey_times:
-        scheduler.add_job(
-            scheduled_job,
-            trigger="cron",
-            hour=hour,
-            minute=minute
-        )
+
+    # Schedule random surveys for today
+    schedule_random_surveys()
+
+    # Every day at 00:01 reschedule for the new day
+    scheduler.add_job(
+        schedule_random_surveys,
+        trigger="cron",
+        hour=0,
+        minute=1
+    )
+
     scheduler.start()
-    logger.info("✅ Scheduler started with 25 jobs")
+    logger.info("✅ Scheduler started")
 
     await app.start()
     await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
