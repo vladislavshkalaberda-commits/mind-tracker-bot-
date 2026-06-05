@@ -18,15 +18,17 @@ QUESTIONS = [
             {"label": "✅ Да, с удовольствием", "value": "yes"},
             {"label": "🤔 Частично", "value": "partly"},
             {"label": "❌ Нет", "value": "no"},
+            {"label": "⚪ Нейтрально / не относится", "value": "neutral"},
         ]
     },
     {
         "id": 2,
-        "text": "Были ли мысли цикличными? (возвращался к одному и тому же)",
+        "text": "Как приходили мысли?",
         "options": [
-            {"label": "🔁 Да, сильно", "value": "strong"},
-            {"label": "〰️ Немного", "value": "little"},
-            {"label": "✨ Нет", "value": "no"},
+            {"label": "🎯 Осознанно — я направлял мысли", "value": "conscious"},
+            {"label": "🌊 Сами по себе — приятно", "value": "flow_positive"},
+            {"label": "🌀 Сами по себе — неприятно", "value": "flow_negative"},
+            {"label": "〰️ Сами по себе — нейтрально", "value": "flow_neutral"},
         ]
     },
     {
@@ -51,13 +53,16 @@ QUESTIONS = [
     },
     {
         "id": 5,
-        "text": "Общее состояние прямо сейчас?",
+        "text": "Какое ощущение дали тебе эти мысли?",
         "options": [
-            {"label": "😄 Хорошо", "value": "good"},
-            {"label": "😐 Нормально", "value": "normal"},
-            {"label": "😔 Плохо", "value": "bad"},
-            {"label": "😤 Раздражён", "value": "irritated"},
-            {"label": "😴 Устал", "value": "tired"},
+            {"label": "🔥 Заряжен / вдохновлён", "value": "energized"},
+            {"label": "😊 Легко / радостно", "value": "light"},
+            {"label": "😌 Спокоен / умиротворён", "value": "calm"},
+            {"label": "⚪ Нейтрально", "value": "neutral"},
+            {"label": "😔 Грустно / расстроен", "value": "sad"},
+            {"label": "😰 Тревожно / беспокойно", "value": "anxious"},
+            {"label": "😤 Злость / раздражение", "value": "angry"},
+            {"label": "🌫️ Подавлен / опустошён", "value": "drained"},
         ]
     },
 ]
