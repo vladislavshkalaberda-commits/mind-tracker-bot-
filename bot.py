@@ -1,10 +1,7 @@
 import logging
 import asyncio
-import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application, CommandHandler, CallbackQueryHandler, ContextTypes
-)
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from database import Database
 from questions import QUESTIONS, get_keyboard
@@ -25,6 +22,9 @@ TZ = pytz.timezone("Europe/Paris")
 
 db = Database()
 current_session = {}
+
+# Global reference to bot - set after initialization
+bot_instance = None
 
 
 def get_chat_id():
@@ -150,27 +150,34 @@ async def week_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Пока недостаточно данных. Нужна хотя бы пара дней!")
 
 
-async def send_scheduled_survey(bot):
+async def scheduled_job():
+    """This runs inside the correct event loop"""
+    global bot_instance
+    if bot_instance is None:
+        logger.error("Bot not initialized yet")
+        return
     chat_id = get_chat_id()
     if not chat_id:
-        logger.warning("No chat_id, skipping")
+        logger.warning("No chat_id found, skipping survey")
         return
     keyboard = InlineKeyboardMarkup([[
         InlineKeyboardButton("📋 Пройти опрос", callback_data="start_survey")
     ]])
     try:
-        await bot.send_message(
+        await bot_instance.send_message(
             chat_id=chat_id,
             text="🔔 *Время опроса!*\n\nКак твои мысли последние 15 минут?",
             reply_markup=keyboard,
             parse_mode="Markdown"
         )
-        logger.info(f"Survey sent to {chat_id}")
+        logger.info(f"✅ Survey sent to {chat_id}")
     except Exception as e:
-        logger.error(f"Failed to send survey: {e}")
+        logger.error(f"❌ Failed to send survey: {e}")
 
 
 async def main():
+    global bot_instance
+
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -179,32 +186,37 @@ async def main():
     app.add_handler(CommandHandler("week", week_command))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
-    scheduler = AsyncIOScheduler(timezone=TZ)
+    # Initialize app first, then set bot_instance
+    await app.initialize()
+    bot_instance = app.bot
+    logger.info(f"Bot initialized: {bot_instance}")
 
+    # Start scheduler AFTER bot is initialized
+    scheduler = AsyncIOScheduler(timezone=TZ)
     survey_times = [
         (9, 0), (10, 15), (11, 30), (12, 45), (14, 0),
-        (15, 15), (16, 30), (17, 45), (19, 0), (20, 0),
+        (15, 15), (16, 30), (16, 55), (17, 45), (19, 0), (20, 0),
         (21, 0), (22, 0)
     ]
-
     for hour, minute in survey_times:
         scheduler.add_job(
-            send_scheduled_survey,
+            scheduled_job,
             trigger="cron",
             hour=hour,
-            minute=minute,
-            args=[app.bot]
+            minute=minute
         )
-
-    await app.initialize()
-    await app.start()
     scheduler.start()
-    logger.info("Bot started with scheduler!")
+    logger.info("✅ Scheduler started with jobs:")
+    for job in scheduler.get_jobs():
+        logger.info(f"  - {job}")
 
+    await app.start()
     await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+    logger.info("✅ Bot is polling!")
+
+    # Keep running
     await asyncio.Event().wait()
 
 
 if __name__ == "__main__":
     asyncio.run(main())
-
