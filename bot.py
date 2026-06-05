@@ -195,7 +195,7 @@ async def main():
     scheduler = AsyncIOScheduler(timezone=TZ)
     survey_times = [
         (9, 0), (10, 15), (11, 30), (12, 45), (14, 0),
-        (15, 15), (16, 30), (16, 55), (17, 45), (19, 0), (20, 0),
+        (15, 15), (16, 30), (16, 55), (17, 04), (19, 0), (20, 0),
         (21, 0), (22, 0)
     ]
     for hour, minute in survey_times:
