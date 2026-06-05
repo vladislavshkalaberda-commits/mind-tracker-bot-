@@ -1,14 +1,17 @@
 import logging
 import asyncio
+import threading
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler, ContextTypes
 )
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from database import Database
 from questions import QUESTIONS, get_keyboard
 from stats import generate_daily_stats, generate_weekly_stats
 import os
 from datetime import datetime
+import pytz
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -18,6 +21,7 @@ logger = logging.getLogger(__name__)
 
 TOKEN = os.getenv("BOT_TOKEN", "")
 CHAT_ID = os.getenv("CHAT_ID", "")
+TZ = pytz.timezone("Europe/Paris")
 
 db = Database()
 current_session = {}
@@ -146,23 +150,27 @@ async def week_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Пока недостаточно данных. Нужна хотя бы пара дней!")
 
 
-async def send_scheduled_survey(context: ContextTypes.DEFAULT_TYPE):
+async def send_scheduled_survey(bot):
     chat_id = get_chat_id()
     if not chat_id:
-        logger.warning("No chat_id found, skipping survey")
+        logger.warning("No chat_id, skipping")
         return
     keyboard = InlineKeyboardMarkup([[
         InlineKeyboardButton("📋 Пройти опрос", callback_data="start_survey")
     ]])
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text="🔔 *Время опроса!*\n\nКак твои мысли последние 15 минут?",
-        reply_markup=keyboard,
-        parse_mode="Markdown"
-    )
+    try:
+        await bot.send_message(
+            chat_id=chat_id,
+            text="🔔 *Время опроса!*\n\nКак твои мысли последние 15 минут?",
+            reply_markup=keyboard,
+            parse_mode="Markdown"
+        )
+        logger.info(f"Survey sent to {chat_id}")
+    except Exception as e:
+        logger.error(f"Failed to send survey: {e}")
 
 
-def main():
+async def main():
     app = Application.builder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -171,26 +179,32 @@ def main():
     app.add_handler(CommandHandler("week", week_command))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
-    # Use PTB's built-in job queue instead of APScheduler
-    job_queue = app.job_queue
+    scheduler = AsyncIOScheduler(timezone=TZ)
+
     survey_times = [
         (9, 0), (10, 15), (11, 30), (12, 45), (14, 0),
         (15, 15), (16, 30), (17, 45), (19, 0), (20, 0),
         (21, 0), (22, 0)
     ]
 
-    import pytz
-    tz = pytz.timezone("Europe/Paris")
-
     for hour, minute in survey_times:
-        job_queue.run_daily(
+        scheduler.add_job(
             send_scheduled_survey,
-            time=datetime.now(tz).replace(hour=hour, minute=minute, second=0, microsecond=0).timetz(),
+            trigger="cron",
+            hour=hour,
+            minute=minute,
+            args=[app.bot]
         )
 
-    logger.info("Mind Tracker Bot started!")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    await app.initialize()
+    await app.start()
+    scheduler.start()
+    logger.info("Bot started with scheduler!")
+
+    await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+    await asyncio.Event().wait()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
+
