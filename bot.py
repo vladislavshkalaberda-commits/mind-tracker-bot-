@@ -27,42 +27,49 @@ current_session = {}
 bot_instance = None
 scheduler = None
 
+SURVEYS_PER_DAY = 30
+MIN_GAP_MINUTES = 15
 
-def get_chat_id():
-    if CHAT_ID:
-        return CHAT_ID
-    try:
-        with open("chat_id.txt", "r") as f:
-            return f.read().strip()
-    except:
-        return None
+
+def generate_random_times(n, start_hour=9, end_hour=22, min_gap=15):
+    """Generate n random times with minimum gap of min_gap minutes"""
+    total_minutes = (end_hour - start_hour) * 60
+    min_total = n * min_gap
+
+    if min_total > total_minutes:
+        n = total_minutes // min_gap
+
+    times = []
+    attempts = 0
+    while len(times) < n and attempts < 10000:
+        attempts += 1
+        candidate = random.randint(0, total_minutes)
+        if all(abs(candidate - t) >= min_gap for t in times):
+            times.append(candidate)
+
+    return sorted(times)
 
 
 def schedule_random_surveys():
-    """Schedule 30 random surveys for today between 9:00 and 22:00"""
     global scheduler
     now = datetime.now(TZ)
     today = now.date()
-
     start = TZ.localize(datetime(today.year, today.month, today.day, 9, 0))
-    end = TZ.localize(datetime(today.year, today.month, today.day, 22, 0))
-    total_seconds = int((end - start).total_seconds())
 
-    # Generate 30 unique random moments
-    offsets = sorted(random.sample(range(total_seconds), 30))
+    offsets = generate_random_times(SURVEYS_PER_DAY, min_gap=MIN_GAP_MINUTES)
 
     count = 0
-    for offset in offsets:
-        send_time = start + timedelta(seconds=offset)
+    for offset_minutes in offsets:
+        send_time = start + timedelta(minutes=offset_minutes)
         if send_time > now:
             scheduler.add_job(
                 scheduled_job,
                 trigger=DateTrigger(run_date=send_time),
-                id=f"survey_{offset}"
+                id=f"survey_{offset_minutes}_{today}"
             )
             count += 1
 
-    logger.info(f"✅ Scheduled {count} random surveys for today")
+    logger.info(f"✅ Scheduled {count} random surveys for today (min gap: {MIN_GAP_MINUTES} min)")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -72,7 +79,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f.write(chat_id)
     await update.message.reply_text(
         "🧠 *Mind Tracker запущен!*\n\n"
-        "Я буду отправлять тебе опросы 30 раз в день в случайные моменты с 9:00 до 22:00.\n\n"
+        "Я буду отправлять тебе до 30 опросов в день в случайные моменты с 9:00 до 22:00.\n"
+        "Минимум 15 минут между опросами.\n\n"
         "Команды:\n"
         "/survey — пройти опрос прямо сейчас\n"
         "/stats — статистика за сегодня\n"
@@ -202,6 +210,16 @@ async def scheduled_job():
         logger.error(f"❌ Failed to send survey: {e}")
 
 
+def get_chat_id():
+    if CHAT_ID:
+        return CHAT_ID
+    try:
+        with open("chat_id.txt", "r") as f:
+            return f.read().strip()
+    except:
+        return None
+
+
 async def main():
     global bot_instance, scheduler
 
@@ -218,11 +236,8 @@ async def main():
     logger.info("✅ Bot initialized")
 
     scheduler = AsyncIOScheduler(timezone=TZ)
-
-    # Schedule random surveys for today
     schedule_random_surveys()
 
-    # Every day at 00:01 reschedule for the new day
     scheduler.add_job(
         schedule_random_surveys,
         trigger="cron",
