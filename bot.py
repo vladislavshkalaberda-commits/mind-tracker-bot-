@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
 from database import Database
-from questions import QUESTIONS, SKIP_Q2
+from questions import QUESTIONS, SKIP_Q2, STOP_AFTER_Q1, STOP_AFTER_Q1
 from stats import generate_daily_stats, generate_weekly_stats, generate_monthly_stats
 import os
 from datetime import datetime, timedelta
@@ -76,10 +76,11 @@ def schedule_random_surveys():
 
 
 def get_next_question_index(session):
-    """Get next question index, skipping q2 if topic is work/abstract"""
     current = session["question_index"]
     if current == 1:
         topic = session["answers"].get("q1", "")
+        if topic in STOP_AFTER_Q1:
+            return len(QUESTIONS)
         if topic in SKIP_Q2:
             return 2
     return current
