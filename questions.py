@@ -12,8 +12,10 @@ QUESTIONS = [
             {"label": "💼 Рабочая задача", "value": "work"},
             {"label": "👤 О себе / самоанализ", "value": "self"},
             {"label": "🌐 Блуждание / ни о чём конкретном", "value": "wandering"},
-        ],
-        "skip_q2_values": ["abstract", "work"]
+            {"label": "🗣️ Разговаривал / общался", "value": "talking"},
+            {"label": "🎯 В потоке / полностью в деле", "value": "flow"},
+            {"label": "😶 Практически без мыслей / в моменте", "value": "present"},
+        ]
     },
     {
         "id": 1,
@@ -58,8 +60,11 @@ QUESTIONS = [
     },
 ]
 
-# Topics where q2 is skipped
+# Topics where q2 is skipped (no emotional charge question)
 SKIP_Q2 = {"abstract", "work"}
+
+# Topics where entire survey ends after q1
+STOP_AFTER_Q1 = {"talking", "flow", "present"}
 
 
 def get_keyboard(question_index: int) -> InlineKeyboardMarkup:
