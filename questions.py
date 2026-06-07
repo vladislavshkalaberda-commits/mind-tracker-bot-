@@ -3,47 +3,38 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 QUESTIONS = [
     {
         "id": 0,
-        "text": "Какой преобладал тип мыслей последние 15 минут?",
+        "text": "О чём были мысли последние 15 минут?",
         "options": [
-            {"label": "😊 Позитивные", "value": "positive"},
-            {"label": "😔 Негативные", "value": "negative"},
-            {"label": "😐 Нейтральные", "value": "neutral"},
-            {"label": "🌀 Смешанные", "value": "mixed"},
-        ]
+            {"label": "🔮 О будущем / мечты / планы", "value": "future"},
+            {"label": "🔄 Прокручивал прошлую ситуацию", "value": "past"},
+            {"label": "💬 Гипотетический сценарий", "value": "hypothetical"},
+            {"label": "📚 Информация / абстрактное", "value": "abstract"},
+            {"label": "💼 Рабочая задача", "value": "work"},
+            {"label": "👤 О себе / самоанализ", "value": "self"},
+            {"label": "🌐 Блуждание / ни о чём конкретном", "value": "wandering"},
+        ],
+        "skip_q2_values": ["abstract", "work"]
     },
     {
         "id": 1,
-        "text": "Хотел бы ты, чтобы мысли последних 15 минут стали твоей реальностью?",
+        "text": "Эти мысли были заряжены позитивно?",
         "options": [
-            {"label": "✅ Да, с удовольствием", "value": "yes"},
-            {"label": "🤔 Частично", "value": "partly"},
-            {"label": "❌ Нет", "value": "no"},
-            {"label": "⚪ Нейтрально / не относится", "value": "neutral"},
+            {"label": "🔥 Да — воодушевляли и заряжали", "value": "charged"},
+            {"label": "😌 Нейтрально — без особого заряда", "value": "neutral"},
+            {"label": "😔 Нет — тянули вниз или тревожили", "value": "negative"},
         ]
     },
     {
         "id": 2,
-        "text": "Как приходили мысли?",
+        "text": "Как ты управлял мыслями?",
         "options": [
-            {"label": "🎯 Осознанно — я направлял мысли", "value": "conscious"},
-            {"label": "🌊 Сами по себе — приятно", "value": "flow_positive"},
-            {"label": "🌀 Сами по себе — неприятно", "value": "flow_negative"},
-            {"label": "〰️ Сами по себе — нейтрально", "value": "flow_neutral"},
+            {"label": "🎯 Осознанно — я направлял", "value": "conscious"},
+            {"label": "〰️ Частично — иногда уплывал", "value": "partial"},
+            {"label": "🌀 Не управлял — мысли сами по себе", "value": "uncontrolled"},
         ]
     },
     {
         "id": 3,
-        "text": "Насколько ты управлял своими мыслями?",
-        "options": [
-            {"label": "1 — Мысли сами по себе", "value": "1"},
-            {"label": "2", "value": "2"},
-            {"label": "3 — Средне", "value": "3"},
-            {"label": "4", "value": "4"},
-            {"label": "5 — Я управлял", "value": "5"},
-        ]
-    },
-    {
-        "id": 4,
         "text": "Было ли желание избежать каких-то мыслей?",
         "options": [
             {"label": "😬 Да", "value": "yes"},
@@ -52,7 +43,7 @@ QUESTIONS = [
         ]
     },
     {
-        "id": 5,
+        "id": 4,
         "text": "Какое ощущение дали тебе эти мысли?",
         "options": [
             {"label": "🔥 Заряжен / вдохновлён", "value": "energized"},
@@ -66,6 +57,9 @@ QUESTIONS = [
         ]
     },
 ]
+
+# Topics where q2 is skipped
+SKIP_Q2 = {"abstract", "work"}
 
 
 def get_keyboard(question_index: int) -> InlineKeyboardMarkup:
