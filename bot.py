@@ -6,8 +6,8 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
 from database import Database
-from questions import QUESTIONS, get_keyboard
-from stats import generate_daily_stats, generate_weekly_stats
+from questions import QUESTIONS, SKIP_Q2
+from stats import generate_daily_stats, generate_weekly_stats, generate_monthly_stats
 import os
 from datetime import datetime, timedelta
 import pytz
@@ -31,14 +31,18 @@ SURVEYS_PER_DAY = 30
 MIN_GAP_MINUTES = 15
 
 
+def get_chat_id():
+    if CHAT_ID:
+        return CHAT_ID
+    try:
+        with open("chat_id.txt", "r") as f:
+            return f.read().strip()
+    except:
+        return None
+
+
 def generate_random_times(n, start_hour=9, end_hour=22, min_gap=15):
-    """Generate n random times with minimum gap of min_gap minutes"""
     total_minutes = (end_hour - start_hour) * 60
-    min_total = n * min_gap
-
-    if min_total > total_minutes:
-        n = total_minutes // min_gap
-
     times = []
     attempts = 0
     while len(times) < n and attempts < 10000:
@@ -46,7 +50,6 @@ def generate_random_times(n, start_hour=9, end_hour=22, min_gap=15):
         candidate = random.randint(0, total_minutes)
         if all(abs(candidate - t) >= min_gap for t in times):
             times.append(candidate)
-
     return sorted(times)
 
 
@@ -55,21 +58,31 @@ def schedule_random_surveys():
     now = datetime.now(TZ)
     today = now.date()
     start = TZ.localize(datetime(today.year, today.month, today.day, 9, 0))
-
     offsets = generate_random_times(SURVEYS_PER_DAY, min_gap=MIN_GAP_MINUTES)
-
     count = 0
     for offset_minutes in offsets:
         send_time = start + timedelta(minutes=offset_minutes)
         if send_time > now:
-            scheduler.add_job(
-                scheduled_job,
-                trigger=DateTrigger(run_date=send_time),
-                id=f"survey_{offset_minutes}_{today}"
-            )
-            count += 1
+            try:
+                scheduler.add_job(
+                    scheduled_job,
+                    trigger=DateTrigger(run_date=send_time),
+                    id=f"survey_{offset_minutes}_{today}"
+                )
+                count += 1
+            except:
+                pass
+    logger.info(f"✅ Scheduled {count} random surveys for today")
 
-    logger.info(f"✅ Scheduled {count} random surveys for today (min gap: {MIN_GAP_MINUTES} min)")
+
+def get_next_question_index(session):
+    """Get next question index, skipping q2 if topic is work/abstract"""
+    current = session["question_index"]
+    if current == 1:
+        topic = session["answers"].get("q1", "")
+        if topic in SKIP_Q2:
+            return 2
+    return current
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -79,17 +92,23 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f.write(chat_id)
     await update.message.reply_text(
         "🧠 *Mind Tracker запущен!*\n\n"
-        "Я буду отправлять тебе до 30 опросов в день в случайные моменты с 9:00 до 22:00.\n"
+        "До 30 опросов в день в случайные моменты с 9:00 до 22:00.\n"
         "Минимум 15 минут между опросами.\n\n"
+        "Автоматическая статистика:\n"
+        "• Каждый день в 22:30\n"
+        "• Каждое воскресенье\n"
+        "• Каждое 1-е число месяца\n\n"
         "Команды:\n"
-        "/survey — пройти опрос прямо сейчас\n"
+        "/survey — опрос прямо сейчас\n"
         "/stats — статистика за сегодня\n"
-        "/week — статистика за неделю",
+        "/week — статистика за неделю\n"
+        "/month — статистика за месяц",
         parse_mode="Markdown"
     )
 
 
 async def send_question(chat_id, bot, question_index, edit_message=None):
+    from questions import get_keyboard
     question = QUESTIONS[question_index]
     keyboard = get_keyboard(question_index)
     text = f"*Вопрос {question_index + 1} из {len(QUESTIONS)}*\n\n{question['text']}"
@@ -152,7 +171,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown"
         )
 
-        next_index = session["question_index"]
+        # Check if we need to skip q2
+        next_index = get_next_question_index(session)
+        session["question_index"] = next_index
+
         if next_index >= len(QUESTIONS):
             db.save_response(chat_id, session["answers"], session["timestamp"])
             del current_session[chat_id]
@@ -172,7 +194,7 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with open(img_path, "rb") as f:
             await update.message.reply_photo(f, caption="📊 Статистика за сегодня")
     else:
-        await update.message.reply_text("Пока недостаточно данных. Пройди хотя бы 3–4 опроса!")
+        await update.message.reply_text("Пока недостаточно данных. Пройди хотя бы 3 опроса!")
 
 
 async def week_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -186,10 +208,45 @@ async def week_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Пока недостаточно данных. Нужна хотя бы пара дней!")
 
 
+async def month_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = str(update.effective_chat.id)
+    await update.message.reply_text("📅 Генерирую статистику за месяц...")
+    img_path = generate_monthly_stats(chat_id, db)
+    if img_path:
+        with open(img_path, "rb") as f:
+            await update.message.reply_photo(f, caption="📅 Статистика за месяц")
+    else:
+        await update.message.reply_text("Пока недостаточно данных. Нужен хотя бы месяц!")
+
+
+async def send_auto_stats(period: str):
+    global bot_instance
+    chat_id = get_chat_id()
+    if not chat_id or not bot_instance:
+        return
+    if period == "daily":
+        img_path = generate_daily_stats(chat_id, db)
+        caption = "📊 Итоги дня"
+    elif period == "weekly":
+        img_path = generate_weekly_stats(chat_id, db)
+        caption = "📈 Итоги недели"
+    elif period == "monthly":
+        img_path = generate_monthly_stats(chat_id, db)
+        caption = "📅 Итоги месяца"
+    else:
+        return
+
+    if img_path:
+        try:
+            with open(img_path, "rb") as f:
+                await bot_instance.send_photo(chat_id=chat_id, photo=f, caption=caption)
+        except Exception as e:
+            logger.error(f"Failed to send auto stats: {e}")
+
+
 async def scheduled_job():
     global bot_instance
     if bot_instance is None:
-        logger.error("Bot not initialized yet")
         return
     chat_id = get_chat_id()
     if not chat_id:
@@ -210,16 +267,6 @@ async def scheduled_job():
         logger.error(f"❌ Failed to send survey: {e}")
 
 
-def get_chat_id():
-    if CHAT_ID:
-        return CHAT_ID
-    try:
-        with open("chat_id.txt", "r") as f:
-            return f.read().strip()
-    except:
-        return None
-
-
 async def main():
     global bot_instance, scheduler
 
@@ -229,6 +276,7 @@ async def main():
     app.add_handler(CommandHandler("survey", survey_command))
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CommandHandler("week", week_command))
+    app.add_handler(CommandHandler("month", month_command))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
     await app.initialize()
@@ -236,14 +284,20 @@ async def main():
     logger.info("✅ Bot initialized")
 
     scheduler = AsyncIOScheduler(timezone=TZ)
+
+    # Random surveys
     schedule_random_surveys()
 
-    scheduler.add_job(
-        schedule_random_surveys,
-        trigger="cron",
-        hour=0,
-        minute=1
-    )
+    # Reschedule every day at 00:01
+    scheduler.add_job(schedule_random_surveys, trigger="cron", hour=0, minute=1)
+
+    # Auto stats
+    scheduler.add_job(lambda: asyncio.create_task(send_auto_stats("daily")),
+                      trigger="cron", hour=22, minute=30)
+    scheduler.add_job(lambda: asyncio.create_task(send_auto_stats("weekly")),
+                      trigger="cron", day_of_week="sun", hour=21, minute=0)
+    scheduler.add_job(lambda: asyncio.create_task(send_auto_stats("monthly")),
+                      trigger="cron", day=1, hour=21, minute=0)
 
     scheduler.start()
     logger.info("✅ Scheduler started")
