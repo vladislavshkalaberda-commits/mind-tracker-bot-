@@ -3,68 +3,35 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 QUESTIONS = [
     {
         "id": 0,
-        "text": "О чём были мысли последние 15 минут?",
+        "text": "Где ты был последние 15 минут?",
         "options": [
-            {"label": "🔮 О будущем / мечты / планы", "value": "future"},
-            {"label": "🔄 Прокручивал прошлую ситуацию", "value": "past"},
-            {"label": "💬 Гипотетический сценарий", "value": "hypothetical"},
-            {"label": "📚 Информация / абстрактное", "value": "abstract"},
-            {"label": "💼 Рабочая задача", "value": "work"},
-            {"label": "👤 О себе / самоанализ", "value": "self"},
-            {"label": "🌐 Блуждание / ни о чём конкретном", "value": "wandering"},
-            {"label": "🗣️ Разговаривал / общался", "value": "talking"},
-            {"label": "🎯 В потоке / полностью в деле", "value": "flow"},
-            {"label": "😶 Практически без мыслей / в моменте", "value": "present"},
+            {"label": "🧠 В мыслях", "value": "thinking"},
+            {"label": "🎯 В деле / действии / контент", "value": "doing"},
+            {"label": "😶 В моменте / без мыслей", "value": "present"},
         ]
     },
     {
         "id": 1,
-        "text": "Эти мысли были заряжены позитивно?",
+        "text": "Эти мысли строят твою желаемую жизнь?",
         "options": [
-            {"label": "🔥 Да — воодушевляли и заряжали", "value": "charged"},
-            {"label": "😌 Нейтрально — без особого заряда", "value": "neutral"},
-            {"label": "😔 Нет — тянули вниз или тревожили", "value": "negative"},
+            {"label": "🔥 Да — заряжают и ведут вперёд", "value": "yes"},
+            {"label": "〰️ Нейтрально", "value": "neutral"},
+            {"label": "❌ Нет — уводят в сторону", "value": "no"},
         ]
     },
     {
         "id": 2,
-        "text": "Как ты управлял мыслями?",
+        "text": "Ты осознавал свои мысли в моменте?",
         "options": [
-            {"label": "🎯 Осознанно — я направлял", "value": "conscious"},
-            {"label": "〰️ Частично — иногда уплывал", "value": "partial"},
-            {"label": "🌀 Не управлял — мысли сами по себе", "value": "uncontrolled"},
-        ]
-    },
-    {
-        "id": 3,
-        "text": "Было ли желание избежать каких-то мыслей?",
-        "options": [
-            {"label": "😬 Да", "value": "yes"},
-            {"label": "🙂 Нет", "value": "no"},
-            {"label": "🤷 Не заметил", "value": "unnoticed"},
-        ]
-    },
-    {
-        "id": 4,
-        "text": "Какое ощущение дали тебе эти мысли?",
-        "options": [
-            {"label": "🔥 Заряжен / вдохновлён", "value": "energized"},
-            {"label": "😊 Легко / радостно", "value": "light"},
-            {"label": "😌 Спокоен / умиротворён", "value": "calm"},
-            {"label": "⚪ Нейтрально", "value": "neutral"},
-            {"label": "😔 Грустно / расстроен", "value": "sad"},
-            {"label": "😰 Тревожно / беспокойно", "value": "anxious"},
-            {"label": "😤 Злость / раздражение", "value": "angry"},
-            {"label": "🌫️ Подавлен / опустошён", "value": "drained"},
+            {"label": "👁️ Да — наблюдал и осознавал", "value": "conscious"},
+            {"label": "〰️ Частично", "value": "partial"},
+            {"label": "🌀 Нет — заметил только сейчас", "value": "unaware"},
         ]
     },
 ]
 
-# Topics where q2 is skipped (no emotional charge question)
-SKIP_Q2 = {"abstract", "work"}
-
-# Topics where entire survey ends after q1
-STOP_AFTER_Q1 = {"talking", "flow", "present"}
+# If first answer is not "thinking" — end survey after q1
+STOP_AFTER_Q1 = {"doing", "present"}
 
 
 def get_keyboard(question_index: int) -> InlineKeyboardMarkup:
