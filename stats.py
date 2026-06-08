@@ -3,55 +3,53 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 from datetime import datetime, date, timedelta
-from typing import List, Dict, Optional
+from typing import Optional
 
 COLORS = {
-    "energized": "#FF6B35",
-    "light": "#4CAF50",
-    "calm": "#2196F3",
-    "neutral": "#9E9E9E",
-    "sad": "#7986CB",
-    "anxious": "#FF9800",
-    "angry": "#F44336",
-    "drained": "#607D8B",
     "bg": "#0F0F1A",
     "card": "#1A1A2E",
     "text": "#E0E0E0",
     "accent": "#7C4DFF",
     "positive": "#4CAF50",
+    "neutral": "#9E9E9E",
     "negative": "#F44336",
+    "thinking": "#7C4DFF",
+    "doing": "#2196F3",
+    "present": "#4CAF50",
 }
 
-FEELING_LABELS = {
-    "energized": "🔥 Заряжен",
-    "light": "😊 Легко",
-    "calm": "😌 Спокоен",
-    "neutral": "⚪ Нейтрально",
-    "sad": "😔 Грустно",
-    "anxious": "😰 Тревожно",
-    "angry": "😤 Злость",
-    "drained": "🌫️ Подавлен",
+# q1: где был
+STATE_LABELS = {
+    "thinking": "🧠 В мыслях",
+    "doing": "🎯 В деле",
+    "present": "😶 В моменте",
 }
 
-TOPIC_LABELS = {
-    "future": "🔮 Будущее",
-    "past": "🔄 Прошлое",
-    "hypothetical": "💬 Сценарий",
-    "abstract": "📚 Абстрактное",
-    "work": "💼 Работа",
-    "self": "👤 Самоанализ",
-    "wandering": "🌐 Блуждание",
+# q2: мысли строят жизнь?
+CHARGE_LABELS = {
+    "yes": "🔥 Да",
+    "neutral": "〰️ Нейтрально",
+    "no": "❌ Нет",
 }
 
-POSITIVE_FEELINGS = {"energized", "light", "calm"}
-NEGATIVE_FEELINGS = {"sad", "anxious", "angry", "drained"}
+CHARGE_COLORS = {
+    "yes": "#4CAF50",
+    "neutral": "#9E9E9E",
+    "no": "#F44336",
+}
 
-def feeling_score(f):
-    return {"energized": 1.0, "light": 0.8, "calm": 0.6, "neutral": 0.5,
-            "sad": 0.3, "anxious": 0.2, "angry": 0.1, "drained": 0.0}.get(f, 0.5)
+# q3: осознанность
+AWARE_LABELS = {
+    "conscious": "👁️ Осознавал",
+    "partial": "〰️ Частично",
+    "unaware": "🌀 Не заметил",
+}
 
-def control_score(c):
-    return {"conscious": 1.0, "partial": 0.5, "uncontrolled": 0.0}.get(c, 0.5)
+def charge_score(c):
+    return {"yes": 1.0, "neutral": 0.5, "no": 0.0}.get(c, 0.5)
+
+def aware_score(a):
+    return {"conscious": 1.0, "partial": 0.5, "unaware": 0.0}.get(a, 0.5)
 
 def setup_dark():
     plt.rcParams.update({
@@ -78,85 +76,91 @@ def generate_daily_stats(chat_id: str, db) -> Optional[str]:
     fig.suptitle(f"📊 Итоги дня — {datetime.now().strftime('%d.%m.%Y')}",
                  color=COLORS["text"], fontsize=16, fontweight='bold')
 
-    times = []
-    for r in responses:
-        try:
-            dt = datetime.fromisoformat(r["timestamp"])
-            times.append(dt.strftime("%H:%M"))
-        except:
-            times.append("")
-
-    # Chart 1: Feeling over time
-    ax1 = axes[0, 0]
-    scores = [feeling_score(r.get("q5", "neutral")) for r in responses]
-    colors = [COLORS.get(r.get("q5", "neutral"), COLORS["neutral"]) for r in responses]
-    ax1.plot(range(len(times)), scores, color=COLORS["accent"], linewidth=2, zorder=2)
-    ax1.scatter(range(len(times)), scores, c=colors, s=80, zorder=3)
-    ax1.set_xticks(range(len(times)))
-    ax1.set_xticklabels(times, rotation=45, fontsize=7)
-    ax1.set_ylim(-0.1, 1.1)
-    ax1.set_yticks([0, 0.5, 1])
-    ax1.set_yticklabels(["Негат.", "Нейтр.", "Позит."], fontsize=8)
-    ax1.set_title("Ощущения в течение дня", color=COLORS["text"], fontsize=11)
-    ax1.grid(True, alpha=0.3)
-
-    # Chart 2: Control over time
-    ax2 = axes[0, 1]
-    ctrl = [control_score(r.get("q3", "partial")) for r in responses]
-    ax2.fill_between(range(len(times)), ctrl, alpha=0.3, color=COLORS["accent"])
-    ax2.plot(range(len(times)), ctrl, color=COLORS["accent"], linewidth=2)
-    ax2.set_xticks(range(len(times)))
-    ax2.set_xticklabels(times, rotation=45, fontsize=7)
-    ax2.set_ylim(-0.1, 1.1)
-    ax2.set_yticks([0, 0.5, 1])
-    ax2.set_yticklabels(["Не управлял", "Частично", "Осознанно"], fontsize=8)
-    ax2.set_title("Осознанность мышления", color=COLORS["text"], fontsize=11)
-    ax2.grid(True, alpha=0.3)
-
-    # Chart 3: Topics pie
-    ax3 = axes[1, 0]
-    topic_counts = {}
-    for r in responses:
-        t = r.get("q1", "wandering")
-        topic_counts[t] = topic_counts.get(t, 0) + 1
-    if topic_counts:
-        labels = [TOPIC_LABELS.get(k, k) for k in topic_counts]
-        sizes = list(topic_counts.values())
-        ax3.pie(sizes, labels=labels, autopct='%1.0f%%',
-                textprops={'color': COLORS["text"], 'fontsize': 8},
-                startangle=90)
-        ax3.set_title("Темы мыслей", color=COLORS["text"], fontsize=11)
-
-    # Chart 4: Positive vs Negative charge
-    ax4 = axes[1, 1]
-    charged = sum(1 for r in responses if r.get("q2") == "charged")
-    neutral_q2 = sum(1 for r in responses if r.get("q2") == "neutral")
-    negative_q2 = sum(1 for r in responses if r.get("q2") == "negative")
-    skipped = len(responses) - charged - neutral_q2 - negative_q2
-
-    labels = ["🔥 Заряжены", "😌 Нейтрально", "😔 Тянули вниз", "💼 Н/П"]
-    values = [charged, neutral_q2, negative_q2, skipped]
-    colors_bar = [COLORS["positive"], COLORS["neutral"], COLORS["negative"], "#555"]
-    bars = ax4.bar(labels, values, color=colors_bar, alpha=0.85)
-    for bar, val in zip(bars, values):
-        if val > 0:
-            ax4.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.1,
-                    str(val), ha='center', color=COLORS["text"], fontsize=9)
-    ax4.set_title("Заряд мыслей", color=COLORS["text"], fontsize=11)
-    ax4.tick_params(axis='x', labelsize=7)
-    ax4.grid(True, alpha=0.3, axis='y')
-
-    # Summary text
     total = len(responses)
-    pos_pct = int((charged / total) * 100) if total else 0
-    ctrl_avg = np.mean(ctrl) if ctrl else 0
-    ctrl_pct = int(ctrl_avg * 100)
+    thinking = [r for r in responses if r.get("q1") == "thinking"]
 
-    fig.text(0.5, 0.01,
-             f"Пройдено опросов: {total}  |  Позитивный заряд: {pos_pct}%  |  Осознанность: {ctrl_pct}%",
-             ha='center', color=COLORS["text"], fontsize=10)
+    # Chart 1: Где был — pie
+    ax1 = axes[0, 0]
+    state_counts = {}
+    for r in responses:
+        s = r.get("q1", "thinking")
+        state_counts[s] = state_counts.get(s, 0) + 1
+    labels = [STATE_LABELS.get(k, k) for k in state_counts]
+    sizes = list(state_counts.values())
+    colors_pie = [COLORS.get(k, COLORS["neutral"]) for k in state_counts]
+    ax1.pie(sizes, labels=labels, colors=colors_pie, autopct='%1.0f%%',
+            textprops={'color': COLORS["text"], 'fontsize': 9}, startangle=90)
+    ax1.set_title("Где ты был?", color=COLORS["text"], fontsize=11)
 
-    plt.tight_layout(rect=[0, 0.04, 1, 0.96])
+    # Chart 2: Заряд мыслей (только thinking)
+    ax2 = axes[0, 1]
+    if thinking:
+        charge_counts = {}
+        for r in thinking:
+            c = r.get("q2", "neutral")
+            charge_counts[c] = charge_counts.get(c, 0) + 1
+        labels2 = [CHARGE_LABELS.get(k, k) for k in charge_counts]
+        sizes2 = list(charge_counts.values())
+        colors2 = [CHARGE_COLORS.get(k, COLORS["neutral"]) for k in charge_counts]
+        ax2.pie(sizes2, labels=labels2, colors=colors2, autopct='%1.0f%%',
+                textprops={'color': COLORS["text"], 'fontsize': 9}, startangle=90)
+        ax2.set_title("Мысли строят жизнь?", color=COLORS["text"], fontsize=11)
+    else:
+        ax2.text(0.5, 0.5, "Нет данных\nо мыслях", ha='center', va='center',
+                color=COLORS["text"], fontsize=12, transform=ax2.transAxes)
+        ax2.set_title("Мысли строят жизнь?", color=COLORS["text"], fontsize=11)
+
+    # Chart 3: Осознанность по времени
+    ax3 = axes[1, 0]
+    if thinking:
+        times = []
+        scores = []
+        for r in thinking:
+            try:
+                dt = datetime.fromisoformat(r["timestamp"])
+                times.append(dt.strftime("%H:%M"))
+                scores.append(aware_score(r.get("q3", "partial")))
+            except:
+                pass
+        if scores:
+            ax3.fill_between(range(len(times)), scores, alpha=0.3, color=COLORS["accent"])
+            ax3.plot(range(len(times)), scores, color=COLORS["accent"], linewidth=2, marker='o', markersize=6)
+            ax3.set_xticks(range(len(times)))
+            ax3.set_xticklabels(times, rotation=45, fontsize=7)
+            ax3.set_ylim(-0.1, 1.1)
+            ax3.set_yticks([0, 0.5, 1])
+            ax3.set_yticklabels(["Не заметил", "Частично", "Осознавал"], fontsize=8)
+    ax3.set_title("Осознанность мышления", color=COLORS["text"], fontsize=11)
+    ax3.grid(True, alpha=0.3)
+
+    # Chart 4: Ключевые цифры дня
+    ax4 = axes[1, 1]
+    ax4.axis('off')
+
+    thinking_pct = int(len(thinking) / total * 100) if total else 0
+    present_pct = int(sum(1 for r in responses if r.get("q1") == "present") / total * 100) if total else 0
+    doing_pct = int(sum(1 for r in responses if r.get("q1") == "doing") / total * 100) if total else 0
+
+    if thinking:
+        positive_pct = int(sum(1 for r in thinking if r.get("q2") == "yes") / len(thinking) * 100)
+        aware_pct = int(np.mean([aware_score(r.get("q3", "partial")) for r in thinking]) * 100)
+    else:
+        positive_pct = 0
+        aware_pct = 0
+
+    summary = (
+        f"📋 Пройдено опросов: {total}\n\n"
+        f"🧠 В мыслях: {thinking_pct}%\n"
+        f"🎯 В деле: {doing_pct}%\n"
+        f"😶 В моменте: {present_pct}%\n\n"
+        f"🔥 Мысли строят жизнь: {positive_pct}%\n"
+        f"👁️ Осознанность: {aware_pct}%"
+    )
+    ax4.text(0.1, 0.9, summary, transform=ax4.transAxes,
+             color=COLORS["text"], fontsize=11, va='top', linespacing=1.8)
+    ax4.set_title("Итоги дня", color=COLORS["text"], fontsize=11)
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
     path = f"/tmp/stats_daily_{chat_id}.png"
     plt.savefig(path, dpi=150, bbox_inches='tight', facecolor=COLORS["bg"])
     plt.close()
@@ -188,58 +192,72 @@ def generate_weekly_stats(chat_id: str, db) -> Optional[str]:
     fig.patch.set_facecolor(COLORS["bg"])
     fig.suptitle("📈 Статистика за неделю", color=COLORS["text"], fontsize=16, fontweight='bold')
 
-    # Chart 1: Feeling trend
+    # Chart 1: % позитивных мыслей по дням
     ax1 = axes[0]
-    avg_feeling = [np.mean([feeling_score(r.get("q5", "neutral")) for r in by_date[d]]) for d in days]
-    bar_colors = [COLORS["positive"] if v > 0.6 else COLORS["negative"] if v < 0.35 else COLORS["neutral"] for v in avg_feeling]
-    ax1.bar(days, avg_feeling, color=bar_colors, alpha=0.85)
-    ax1.plot(days, avg_feeling, color='white', linewidth=1.5, linestyle='--', alpha=0.5)
+    pos_pct = []
+    for d in days:
+        thinking = [r for r in by_date[d] if r.get("q1") == "thinking"]
+        if thinking:
+            pct = sum(1 for r in thinking if r.get("q2") == "yes") / len(thinking)
+        else:
+            pct = 0
+        pos_pct.append(pct)
+    bar_colors = [COLORS["positive"] if v > 0.6 else COLORS["negative"] if v < 0.35 else COLORS["neutral"] for v in pos_pct]
+    ax1.bar(days, pos_pct, color=bar_colors, alpha=0.85)
+    ax1.plot(days, pos_pct, color='white', linewidth=1.5, linestyle='--', alpha=0.5)
     ax1.set_ylim(0, 1.1)
-    ax1.set_yticks([0, 0.5, 1])
-    ax1.set_yticklabels(["Негат.", "Нейтр.", "Позит."])
-    ax1.set_title("Ощущения по дням", color=COLORS["text"], fontsize=12)
+    ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{int(x*100)}%'))
+    ax1.set_title("Мысли строят жизнь", color=COLORS["text"], fontsize=12)
     ax1.tick_params(axis='x', rotation=45)
     ax1.grid(True, alpha=0.3, axis='y')
 
-    # Chart 2: Positive charge trend
+    # Chart 2: Осознанность по дням
     ax2 = axes[1]
-    charge_pct = []
+    aware_pct = []
     for d in days:
-        rr = by_date[d]
-        q2_responses = [r for r in rr if r.get("q2")]
-        if q2_responses:
-            pct = sum(1 for r in q2_responses if r.get("q2") == "charged") / len(q2_responses)
+        thinking = [r for r in by_date[d] if r.get("q1") == "thinking"]
+        if thinking:
+            pct = np.mean([aware_score(r.get("q3", "partial")) for r in thinking])
         else:
             pct = 0
-        charge_pct.append(pct)
-
-    ax2.fill_between(range(len(days)), charge_pct, alpha=0.2, color=COLORS["accent"])
-    ax2.plot(range(len(days)), charge_pct, color=COLORS["accent"], linewidth=2.5, marker='o', markersize=8)
+        aware_pct.append(pct)
+    ax2.fill_between(range(len(days)), aware_pct, alpha=0.2, color=COLORS["accent"])
+    ax2.plot(range(len(days)), aware_pct, color=COLORS["accent"], linewidth=2.5, marker='o', markersize=8)
     ax2.set_xticks(range(len(days)))
     ax2.set_xticklabels(days, rotation=45)
     ax2.set_ylim(0, 1.1)
     ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{int(x*100)}%'))
-    ax2.set_title("% позитивного заряда", color=COLORS["text"], fontsize=12)
+    ax2.set_title("Осознанность", color=COLORS["text"], fontsize=12)
     ax2.grid(True, alpha=0.3)
 
-    if len(charge_pct) >= 2:
-        trend = charge_pct[-1] - charge_pct[0]
+    if len(aware_pct) >= 2:
+        trend = aware_pct[-1] - aware_pct[0]
         trend_text = "↑ Растёт" if trend > 0.05 else "↓ Снижается" if trend < -0.05 else "→ Стабильно"
         trend_color = COLORS["positive"] if trend > 0.05 else COLORS["negative"] if trend < -0.05 else COLORS["neutral"]
         ax2.text(0.5, 0.05, trend_text, transform=ax2.transAxes,
                 ha='center', fontsize=12, color=trend_color, fontweight='bold')
 
-    # Chart 3: Control trend
+    # Chart 3: Где был по дням (stacked bar)
     ax3 = axes[2]
-    avg_control = [np.mean([control_score(r.get("q3", "partial")) for r in by_date[d]]) for d in days]
-    ax3.fill_between(range(len(days)), avg_control, alpha=0.2, color="#FF6B35")
-    ax3.plot(range(len(days)), avg_control, color="#FF6B35", linewidth=2.5, marker='o', markersize=8)
-    ax3.set_xticks(range(len(days)))
-    ax3.set_xticklabels(days, rotation=45)
+    thinking_pcts = []
+    doing_pcts = []
+    present_pcts = []
+    for d in days:
+        total = len(by_date[d])
+        thinking_pcts.append(sum(1 for r in by_date[d] if r.get("q1") == "thinking") / total)
+        doing_pcts.append(sum(1 for r in by_date[d] if r.get("q1") == "doing") / total)
+        present_pcts.append(sum(1 for r in by_date[d] if r.get("q1") == "present") / total)
+
+    x = range(len(days))
+    ax3.bar(days, thinking_pcts, label="🧠 В мыслях", color=COLORS["thinking"], alpha=0.85)
+    ax3.bar(days, doing_pcts, bottom=thinking_pcts, label="🎯 В деле", color=COLORS["doing"], alpha=0.85)
+    ax3.bar(days, present_pcts, bottom=[t+d for t,d in zip(thinking_pcts, doing_pcts)],
+            label="😶 В моменте", color=COLORS["present"], alpha=0.85)
     ax3.set_ylim(0, 1.1)
     ax3.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{int(x*100)}%'))
-    ax3.set_title("Осознанность мышления", color=COLORS["text"], fontsize=12)
-    ax3.grid(True, alpha=0.3)
+    ax3.set_title("Где ты был", color=COLORS["text"], fontsize=12)
+    ax3.tick_params(axis='x', rotation=45)
+    ax3.legend(fontsize=8, facecolor=COLORS["card"], labelcolor=COLORS["text"])
 
     plt.tight_layout(rect=[0, 0, 1, 0.93])
     path = f"/tmp/stats_weekly_{chat_id}.png"
@@ -257,7 +275,7 @@ def generate_monthly_stats(chat_id: str, db) -> Optional[str]:
     for r in responses:
         try:
             dt = datetime.fromisoformat(r["timestamp"])
-            week = f"Нед. {dt.isocalendar()[1]}"
+            week = f"Нед.{dt.isocalendar()[1]}"
             if week not in by_week:
                 by_week[week] = []
             by_week[week].append(r)
@@ -269,60 +287,67 @@ def generate_monthly_stats(chat_id: str, db) -> Optional[str]:
 
     weeks = sorted(by_week.keys())
     setup_dark()
-    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
     fig.patch.set_facecolor(COLORS["bg"])
     fig.suptitle("📅 Статистика за месяц", color=COLORS["text"], fontsize=16, fontweight='bold')
 
-    # Chart 1: Feeling by week
-    ax1 = axes[0, 0]
-    avg_feeling = [np.mean([feeling_score(r.get("q5", "neutral")) for r in by_week[w]]) for w in weeks]
-    ax1.bar(weeks, avg_feeling, color=COLORS["accent"], alpha=0.85)
-    ax1.plot(weeks, avg_feeling, color='white', linewidth=1.5, linestyle='--', alpha=0.5)
-    ax1.set_ylim(0, 1.1)
-    ax1.set_title("Ощущения по неделям", color=COLORS["text"], fontsize=11)
-    ax1.grid(True, alpha=0.3, axis='y')
-
-    # Chart 2: Positive charge by week
-    ax2 = axes[0, 1]
-    charge_pct = []
+    # Chart 1: % позитивных мыслей по неделям
+    ax1 = axes[0]
+    pos_pct = []
     for w in weeks:
-        rr = by_week[w]
-        q2_r = [r for r in rr if r.get("q2")]
-        pct = sum(1 for r in q2_r if r.get("q2") == "charged") / len(q2_r) if q2_r else 0
-        charge_pct.append(pct)
-    ax2.fill_between(range(len(weeks)), charge_pct, alpha=0.2, color=COLORS["positive"])
-    ax2.plot(range(len(weeks)), charge_pct, color=COLORS["positive"], linewidth=2.5, marker='o')
+        thinking = [r for r in by_week[w] if r.get("q1") == "thinking"]
+        pct = sum(1 for r in thinking if r.get("q2") == "yes") / len(thinking) if thinking else 0
+        pos_pct.append(pct)
+    ax1.fill_between(range(len(weeks)), pos_pct, alpha=0.2, color=COLORS["positive"])
+    ax1.plot(range(len(weeks)), pos_pct, color=COLORS["positive"], linewidth=2.5, marker='o', markersize=8)
+    ax1.set_xticks(range(len(weeks)))
+    ax1.set_xticklabels(weeks)
+    ax1.set_ylim(0, 1.1)
+    ax1.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{int(x*100)}%'))
+    ax1.set_title("Мысли строят жизнь", color=COLORS["text"], fontsize=12)
+    ax1.grid(True, alpha=0.3)
+
+    if len(pos_pct) >= 2:
+        trend = pos_pct[-1] - pos_pct[0]
+        trend_text = "↑ Растёт" if trend > 0.05 else "↓ Снижается" if trend < -0.05 else "→ Стабильно"
+        trend_color = COLORS["positive"] if trend > 0.05 else COLORS["negative"] if trend < -0.05 else COLORS["neutral"]
+        ax1.text(0.5, 0.05, trend_text, transform=ax1.transAxes,
+                ha='center', fontsize=12, color=trend_color, fontweight='bold')
+
+    # Chart 2: Осознанность по неделям
+    ax2 = axes[1]
+    aware_pct = []
+    for w in weeks:
+        thinking = [r for r in by_week[w] if r.get("q1") == "thinking"]
+        pct = np.mean([aware_score(r.get("q3", "partial")) for r in thinking]) if thinking else 0
+        aware_pct.append(pct)
+    ax2.fill_between(range(len(weeks)), aware_pct, alpha=0.2, color=COLORS["accent"])
+    ax2.plot(range(len(weeks)), aware_pct, color=COLORS["accent"], linewidth=2.5, marker='o', markersize=8)
     ax2.set_xticks(range(len(weeks)))
     ax2.set_xticklabels(weeks)
     ax2.set_ylim(0, 1.1)
     ax2.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{int(x*100)}%'))
-    ax2.set_title("% позитивного заряда", color=COLORS["text"], fontsize=11)
+    ax2.set_title("Осознанность", color=COLORS["text"], fontsize=12)
     ax2.grid(True, alpha=0.3)
 
-    # Chart 3: Topics for whole month
-    ax3 = axes[1, 0]
-    topic_counts = {}
-    for r in responses:
-        t = r.get("q1", "wandering")
-        topic_counts[t] = topic_counts.get(t, 0) + 1
-    if topic_counts:
-        labels = [TOPIC_LABELS.get(k, k) for k in topic_counts]
-        sizes = list(topic_counts.values())
-        ax3.pie(sizes, labels=labels, autopct='%1.0f%%',
-                textprops={'color': COLORS["text"], 'fontsize': 8}, startangle=90)
-        ax3.set_title("Темы мыслей за месяц", color=COLORS["text"], fontsize=11)
-
-    # Chart 4: Control by week
-    ax4 = axes[1, 1]
-    avg_ctrl = [np.mean([control_score(r.get("q3", "partial")) for r in by_week[w]]) for w in weeks]
-    ax4.fill_between(range(len(weeks)), avg_ctrl, alpha=0.2, color="#FF6B35")
-    ax4.plot(range(len(weeks)), avg_ctrl, color="#FF6B35", linewidth=2.5, marker='o')
-    ax4.set_xticks(range(len(weeks)))
-    ax4.set_xticklabels(weeks)
-    ax4.set_ylim(0, 1.1)
-    ax4.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{int(x*100)}%'))
-    ax4.set_title("Осознанность по неделям", color=COLORS["text"], fontsize=11)
-    ax4.grid(True, alpha=0.3)
+    # Chart 3: Где был по неделям
+    ax3 = axes[2]
+    thinking_pcts = []
+    doing_pcts = []
+    present_pcts = []
+    for w in weeks:
+        total = len(by_week[w])
+        thinking_pcts.append(sum(1 for r in by_week[w] if r.get("q1") == "thinking") / total)
+        doing_pcts.append(sum(1 for r in by_week[w] if r.get("q1") == "doing") / total)
+        present_pcts.append(sum(1 for r in by_week[w] if r.get("q1") == "present") / total)
+    ax3.bar(weeks, thinking_pcts, label="🧠 В мыслях", color=COLORS["thinking"], alpha=0.85)
+    ax3.bar(weeks, doing_pcts, bottom=thinking_pcts, label="🎯 В деле", color=COLORS["doing"], alpha=0.85)
+    ax3.bar(weeks, present_pcts, bottom=[t+d for t,d in zip(thinking_pcts, doing_pcts)],
+            label="😶 В моменте", color=COLORS["present"], alpha=0.85)
+    ax3.set_ylim(0, 1.1)
+    ax3.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{int(x*100)}%'))
+    ax3.set_title("Где ты был", color=COLORS["text"], fontsize=12)
+    ax3.legend(fontsize=8, facecolor=COLORS["card"], labelcolor=COLORS["text"])
 
     plt.tight_layout(rect=[0, 0, 1, 0.93])
     path = f"/tmp/stats_monthly_{chat_id}.png"
