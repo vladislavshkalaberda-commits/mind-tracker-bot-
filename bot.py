@@ -291,12 +291,12 @@ async def main():
     scheduler.add_job(schedule_random_surveys, trigger="cron", hour=0, minute=1)
 
     # Auto stats
-    scheduler.add_job(lambda: asyncio.create_task(send_auto_stats("daily")),
-                      trigger="cron", hour=22, minute=30)
-    scheduler.add_job(lambda: asyncio.create_task(send_auto_stats("weekly")),
-                      trigger="cron", day_of_week="sun", hour=21, minute=0)
-    scheduler.add_job(lambda: asyncio.create_task(send_auto_stats("monthly")),
-                      trigger="cron", day=1, hour=21, minute=0)
+    scheduler.add_job(send_auto_stats, trigger="cron", hour=22, minute=30,
+                      args=["daily"])
+    scheduler.add_job(send_auto_stats, trigger="cron", day_of_week="sun",
+                      hour=21, minute=0, args=["weekly"])
+    scheduler.add_job(send_auto_stats, trigger="cron", day=1,
+                      hour=21, minute=0, args=["monthly"])
 
     scheduler.start()
     logger.info("✅ Scheduler started")
