@@ -1,7 +1,6 @@
 import sqlite3
-import json
 from datetime import datetime, date
-from typing import List, Dict, Optional
+from typing import List, Dict
 
 
 class Database:
@@ -25,11 +24,14 @@ class Database:
                     q1 TEXT,
                     q2 TEXT,
                     q3 TEXT,
-                    q4 TEXT,
-                    q5 TEXT,
-                    q6 TEXT
+                    note TEXT
                 )
             """)
+            # Migration: add note column if missing (for existing DBs)
+            try:
+                conn.execute("ALTER TABLE responses ADD COLUMN note TEXT")
+            except sqlite3.OperationalError:
+                pass
             conn.commit()
 
     def register_user(self, chat_id: str):
@@ -40,20 +42,18 @@ class Database:
             )
             conn.commit()
 
-    def save_response(self, chat_id: str, answers: Dict, timestamp: str):
+    def save_response(self, chat_id: str, answers: Dict, timestamp: str, note: str = ""):
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("""
-                INSERT INTO responses (chat_id, timestamp, q1, q2, q3, q4, q5, q6)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO responses (chat_id, timestamp, q1, q2, q3, note)
+                VALUES (?, ?, ?, ?, ?, ?)
             """, (
                 chat_id,
                 timestamp,
                 answers.get("q1", ""),
                 answers.get("q2", ""),
                 answers.get("q3", ""),
-                answers.get("q4", ""),
-                answers.get("q5", ""),
-                answers.get("q6", ""),
+                note,
             ))
             conn.commit()
 
@@ -76,7 +76,7 @@ class Database:
                 WHERE chat_id = ?
                 ORDER BY timestamp DESC
                 LIMIT ?
-            """, (chat_id, days * 15)).fetchall()
+            """, (chat_id, days * 30)).fetchall()
         return [dict(r) for r in rows]
 
     def get_total_count(self, chat_id: str) -> int:
