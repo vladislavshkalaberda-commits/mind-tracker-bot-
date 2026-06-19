@@ -2,7 +2,7 @@ import logging
 import asyncio
 import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
 from database import Database
@@ -125,7 +125,8 @@ async def survey_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     current_session[chat_id] = {
         "answers": {},
         "timestamp": datetime.now().isoformat(),
-        "question_index": 0
+        "question_index": 0,
+        "waiting_note": False
     }
     await send_question(chat_id, context.bot, 0)
 
@@ -140,9 +141,26 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current_session[chat_id] = {
             "answers": {},
             "timestamp": datetime.now().isoformat(),
-            "question_index": 0
+            "question_index": 0,
+            "waiting_note": False
         }
         await send_question(chat_id, context.bot, 0, edit_message=query.message)
+        return
+
+    if data == "add_note":
+        if chat_id in current_session:
+            current_session[chat_id]["waiting_note"] = True
+            await query.edit_message_text(
+                "✏️ Напиши короткую заметку (просто отправь текстовое сообщение):"
+            )
+        return
+
+    if data == "skip_note":
+        if chat_id in current_session:
+            session = current_session[chat_id]
+            db.save_response(chat_id, session["answers"], session["timestamp"], note="")
+            del current_session[chat_id]
+        await query.edit_message_text("✅ Готово! Каждый ответ — шаг к более осознанному мышлению.")
         return
 
     if data.startswith("ans_"):
@@ -175,10 +193,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session["question_index"] = next_index
 
         if next_index >= len(QUESTIONS):
-            db.save_response(chat_id, session["answers"], session["timestamp"])
-            del current_session[chat_id]
+            # Ask if user wants to add a note
+            note_keyboard = InlineKeyboardMarkup([[
+                InlineKeyboardButton("✏️ Добавить заметку", callback_data="add_note"),
+                InlineKeyboardButton("✅ Готово", callback_data="skip_note"),
+            ]])
             await query.message.reply_text(
-                "✨ *Записано!*\n\nКаждый ответ — шаг к более осознанному мышлению.",
+                "✨ *Записано!*\n\nХочешь добавить короткую заметку о том, чем занимался / о чём думал?",
+                reply_markup=note_keyboard,
                 parse_mode="Markdown"
             )
         else:
@@ -266,6 +288,20 @@ async def scheduled_job():
         logger.error(f"❌ Failed to send survey: {e}")
 
 
+
+async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = str(update.effective_chat.id)
+    if chat_id in current_session and current_session[chat_id].get("waiting_note"):
+        note = update.message.text
+        session = current_session[chat_id]
+        db.save_response(chat_id, session["answers"], session["timestamp"], note=note)
+        del current_session[chat_id]
+        await update.message.reply_text(
+            "✅ *Заметка сохранена!*\n\nКаждый ответ — шаг к более осознанному мышлению.",
+            parse_mode="Markdown"
+        )
+
+
 async def main():
     global bot_instance, scheduler
 
@@ -277,6 +313,7 @@ async def main():
     app.add_handler(CommandHandler("week", week_command))
     app.add_handler(CommandHandler("month", month_command))
     app.add_handler(CallbackQueryHandler(handle_callback))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
     await app.initialize()
     bot_instance = app.bot
