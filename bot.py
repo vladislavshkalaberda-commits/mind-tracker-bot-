@@ -6,7 +6,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Mess
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.date import DateTrigger
 from database import Database
-from questions import QUESTIONS, STOP_AFTER_Q1, STOP_AFTER_Q1
+from questions import QUESTIONS, STOP_AFTER_Q1
 from stats import generate_daily_stats, generate_weekly_stats, generate_monthly_stats
 import os
 from datetime import datetime, timedelta
@@ -229,6 +229,32 @@ async def week_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("Пока недостаточно данных. Нужна хотя бы пара дней!")
 
 
+async def notes_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = str(update.effective_chat.id)
+    responses = db.get_responses_last_days(chat_id, days=7)
+    notes = [r for r in responses if r.get("note")]
+
+    if not notes:
+        await update.message.reply_text("Пока нет заметок за последние 7 дней.")
+        return
+
+    notes = notes[:15]  # limit to most recent 15
+    lines = ["📝 Твои заметки за неделю:\n"]
+    for r in notes:
+        try:
+            dt = datetime.fromisoformat(r["timestamp"])
+            time_str = dt.strftime("%d.%m %H:%M")
+        except:
+            time_str = "?"
+        lines.append(f"🕐 {time_str}\n{r['note']}\n")
+
+    text = "\n".join(lines)
+    # Telegram message limit safety
+    if len(text) > 4000:
+        text = text[:4000] + "\n\n..."
+    await update.message.reply_text(text)
+
+
 async def month_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = str(update.effective_chat.id)
     await update.message.reply_text("📅 Генерирую статистику за месяц...")
@@ -238,6 +264,37 @@ async def month_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_photo(f, caption="📅 Статистика за месяц")
     else:
         await update.message.reply_text("Пока недостаточно данных. Нужен хотя бы месяц!")
+
+
+async def send_daily_notes(chat_id):
+    """Send today's notes as a text message"""
+    global bot_instance
+    responses = db.get_responses_today(chat_id)
+    notes = [r for r in responses if r.get("note")]
+
+    logger.info(f"📝 Found {len(notes)} notes for today (chat_id={chat_id})")
+
+    if not notes:
+        return
+
+    lines = ["📝 Заметки за сегодня:\n"]
+    for r in notes:
+        try:
+            dt = datetime.fromisoformat(r["timestamp"])
+            time_str = dt.strftime("%H:%M")
+        except:
+            time_str = "?"
+        lines.append(f"🕐 {time_str}\n{r['note']}\n")
+
+    text = "\n".join(lines)
+    if len(text) > 4000:
+        text = text[:4000] + "\n\n..."
+
+    try:
+        await bot_instance.send_message(chat_id=chat_id, text=text)
+        logger.info("✅ Daily notes sent successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to send daily notes: {e}")
 
 
 async def send_auto_stats(period: str):
@@ -263,6 +320,10 @@ async def send_auto_stats(period: str):
                 await bot_instance.send_photo(chat_id=chat_id, photo=f, caption=caption)
         except Exception as e:
             logger.error(f"Failed to send auto stats: {e}")
+
+    # Send notes after daily stats
+    if period == "daily":
+        await send_daily_notes(chat_id)
 
 
 async def scheduled_job():
@@ -312,6 +373,7 @@ async def main():
     app.add_handler(CommandHandler("stats", stats_command))
     app.add_handler(CommandHandler("week", week_command))
     app.add_handler(CommandHandler("month", month_command))
+    app.add_handler(CommandHandler("notes", notes_command))
     app.add_handler(CallbackQueryHandler(handle_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_message))
 
