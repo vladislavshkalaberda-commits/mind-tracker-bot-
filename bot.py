@@ -27,7 +27,7 @@ current_session = {}
 bot_instance = None
 scheduler = None
 
-SURVEYS_PER_DAY = 30
+SURVEYS_PER_DAY = 12
 MIN_GAP_MINUTES = 15
 
 
@@ -91,7 +91,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f.write(chat_id)
     await update.message.reply_text(
         "🧠 *Mind Tracker запущен!*\n\n"
-        "До 30 опросов в день в случайные моменты с 9:00 до 22:00.\n"
+        "До 12 опросов в день в случайные моменты с 9:00 до 22:00.\n"
         "Минимум 15 минут между опросами.\n\n"
         "Автоматическая статистика:\n"
         "• Каждый день в 22:30\n"
@@ -216,6 +216,23 @@ async def stats_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_photo(f, caption="📊 Статистика за сегодня")
     else:
         await update.message.reply_text("Пока недостаточно данных. Пройди хотя бы 3 опроса!")
+
+    # Also send today's notes
+    responses = db.get_responses_today(chat_id)
+    notes = [r for r in responses if r.get("note")]
+    if notes:
+        lines = ["📝 Заметки за сегодня:\n"]
+        for r in notes:
+            try:
+                dt = datetime.fromisoformat(r["timestamp"])
+                time_str = dt.strftime("%H:%M")
+            except:
+                time_str = "?"
+            lines.append(f"🕐 {time_str}\n{r['note']}\n")
+        text = "\n".join(lines)
+        if len(text) > 4000:
+            text = text[:4000] + "\n\n..."
+        await update.message.reply_text(text)
 
 
 async def week_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
